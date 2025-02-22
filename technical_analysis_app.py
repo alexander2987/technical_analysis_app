@@ -16,7 +16,11 @@ def get_sp500_components():
 
 @st.cache_data
 def load_data(symbol, start, end):
-    return yf.download(symbol, start, end)
+    df = yf.download(symbol, start, end)
+    # Flatten columns if it’s a multi-index:
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = [col[0] for col in df.columns]
+    return df
 
 @st.cache_data
 def convert_df_to_csv(df):
@@ -97,7 +101,10 @@ if volume_flag and "Volume" in df.columns:
 # Add SMA if selected
 if sma_flag:
     df["SMA"] = df["Close"].rolling(window=sma_periods).mean()
-    fig.add_trace(go.Scatter(x=df.index, y=df["SMA"], mode="lines", name="SMA", line=dict(color="orange")))
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df["SMA"], mode="lines", name="SMA",
+        line=dict(color="orange")
+    ))
 
 # Add Bollinger Bands if selected
 if bb_flag:
@@ -106,14 +113,25 @@ if bb_flag:
     upper_band = rolling_mean + (bb_std * rolling_std)
     lower_band = rolling_mean - (bb_std * rolling_std)
 
-    fig.add_trace(go.Scatter(x=df.index, y=upper_band, mode="lines", name="Upper BB", line=dict(dash="dot", color="red")))
-    fig.add_trace(go.Scatter(x=df.index, y=lower_band, mode="lines", name="Lower BB", line=dict(dash="dot", color="green")))
+    fig.add_trace(go.Scatter(
+        x=df.index, y=upper_band, mode="lines", name="Upper BB",
+        line=dict(dash="dot", color="red")
+    ))
+    fig.add_trace(go.Scatter(
+        x=df.index, y=lower_band, mode="lines", name="Lower BB",
+        line=dict(dash="dot", color="green")
+    ))
 
 # Add RSI if selected
 if rsi_flag:
-    df["RSI"] = 100 - (100 / (1 + (df["Close"].diff().clip(lower=0).rolling(rsi_periods).mean() /
-                                  df["Close"].diff().clip(upper=0).rolling(rsi_periods).mean().abs())))
-    fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], mode="lines", name="RSI", line=dict(color="purple")))
+    df["RSI"] = 100 - (100 / (1 + (
+        df["Close"].diff().clip(lower=0).rolling(rsi_periods).mean() /
+        df["Close"].diff().clip(upper=0).rolling(rsi_periods).mean().abs()
+    )))
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df["RSI"], mode="lines", name="RSI",
+        line=dict(color="purple")
+    ))
     fig.add_hline(y=rsi_upper, line=dict(color="gray", dash="dash"))
     fig.add_hline(y=rsi_lower, line=dict(color="gray", dash="dash"))
 
