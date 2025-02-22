@@ -3,8 +3,9 @@ import streamlit as st
 import datetime
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
-# Set page to wide mode before creating any layout/UI
+# Set page to wide mode so the charts have more horizontal space
 st.set_page_config(layout="wide")
 
 # Data Functions
@@ -19,7 +20,7 @@ def get_sp500_components():
 @st.cache_data
 def load_data(symbol, start, end):
     df = yf.download(symbol, start, end)
-    # Flatten columns if multi-index
+    # Flatten columns if it’s a multi-index
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [col[0] for col in df.columns]
     return df
@@ -90,21 +91,28 @@ data_exp.download_button(
     mime="text/csv",
 )
 
-# Plot Technical Analysis Chart using Plotly
-fig = go.Figure()
+# Create a 3-row subplot figure:
+#  - Row 1: Price, SMA, Bollinger
+#  - Row 2: RSI
+#  - Row 3: Volume
+fig = make_subplots(
+    rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.02,
+    row_heights=[0.5, 0.25, 0.25]  # Adjust as desired
+)
 
-# Add Closing Price
-fig.add_trace(go.Scatter(x=df.index, y=df["Close"], mode="lines", name="Close"))
-
-# Add Volume if selected
-if volume_flag and "Volume" in df.columns:
-    fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume", opacity=0.3))
+# 1) PRICE CHART (row=1)
+fig.add_trace(
+    go.Scatter(x=df.index, y=df["Close"], mode="lines", name="Close"),
+    row=1, col=1
+)
 
 # Add SMA if selected
 if sma_flag:
     df["SMA"] = df["Close"].rolling(window=sma_periods).mean()
     fig.add_trace(
-        go.Scatter(x=df.index, y=df["SMA"], mode="lines", name="SMA", line=dict(color="orange"))
+        go.Scatter(x=df.index, y=df["SMA"], mode="lines", name=f"SMA ({sma_periods})",
+                   line=dict(color="orange")),
+        row=1, col=1
     )
 
 # Add Bollinger Bands if selected
@@ -115,31 +123,56 @@ if bb_flag:
     lower_band = rolling_mean - (bb_std * rolling_std)
 
     fig.add_trace(
-        go.Scatter(x=df.index, y=upper_band, mode="lines", name="Upper BB", line=dict(dash="dot", color="red"))
+        go.Scatter(x=df.index, y=upper_band, mode="lines", name="Upper BB",
+                   line=dict(dash="dot", color="red")),
+        row=1, col=1
     )
     fig.add_trace(
-        go.Scatter(x=df.index, y=lower_band, mode="lines", name="Lower BB", line=dict(dash="dot", color="green"))
+        go.Scatter(x=df.index, y=lower_band, mode="lines", name="Lower BB",
+                   line=dict(dash="dot", color="green")),
+        row=1, col=1
     )
 
-# Add RSI if selected
+# 2) RSI (row=2)
 if rsi_flag:
     df["RSI"] = 100 - (100 / (1 + (
         df["Close"].diff().clip(lower=0).rolling(rsi_periods).mean() /
         df["Close"].diff().clip(upper=0).rolling(rsi_periods).mean().abs()
     )))
     fig.add_trace(
-        go.Scatter(x=df.index, y=df["RSI"], mode="lines", name="RSI", line=dict(color="purple"))
+        go.Scatter(x=df.index, y=df["RSI"], mode="lines", name=f"RSI ({rsi_periods})",
+                   line=dict(color="purple")),
+        row=2, col=1
     )
-    fig.add_hline(y=rsi_upper, line=dict(color="gray", dash="dash"))
-    fig.add_hline(y=rsi_lower, line=dict(color="gray", dash="dash"))
+    # Add horizontal lines for RSI thresholds
+    fig.add_hline(
+        y=rsi_upper, line=dict(color="gray", dash="dash"),
+        row=2, col=1
+    )
+    fig.add_hline(
+        y=rsi_lower, line=dict(color="gray", dash="dash"),
+        row=2, col=1
+    )
 
-# Customize Layout
+# 3) VOLUME (row=3)
+if volume_flag and "Volume" in df.columns:
+    fig.add_trace(
+        go.Bar(x=df.index, y=df["Volume"], name="Volume", opacity=0.6),
+        row=3, col=1
+    )
+
+# Update Y-axes labels in each row
+fig.update_yaxes(title_text="Price ($)", row=1, col=1)
+if rsi_flag:
+    fig.update_yaxes(title_text="RSI", row=2, col=1)
+if volume_flag:
+    fig.update_yaxes(title_text="Volume", row=3, col=1)
+
+# Final Layout
 fig.update_layout(
     title=f"{tickers_companies_dict[ticker]}'s Stock Price",
-    xaxis_title="Date",
-    yaxis_title="Price ($)",
-    template="plotly_white"
+    template="plotly_white",
 )
 
-# Display Chart in Streamlit - wide mode
+# Render the chart in Streamlit, with container width
 st.plotly_chart(fig, use_container_width=True)
